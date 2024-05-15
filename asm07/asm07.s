@@ -11,7 +11,7 @@ _start:
     mov edx, 5
     int 0x80
 
-    ; Convertir l'entrée de l'utilisateur en un entier
+    ;convertir l'entrée de l'utilisateur en un entier
     mov ecx, number
     xor eax, eax
 
