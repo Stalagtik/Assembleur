@@ -17,10 +17,13 @@ _start:
     add rdi, 10
 
 _dernier:
+    ;--------Vérifie si le caractère est inférieur a "0"---------
     cmp byte [rdi], 0x30
-    jb _verifier          
+    jb _verifier
+    ;--------Vérifie si le caractère est supérieur a "9"---------
     cmp byte [rdi], 0x39
-    ja _verifier          
+    ja _verifier
+    ;--------Si le caractère est entre "0" et "9" ont passe au résultat---------
     jmp _resultat            
 
 _verifier:

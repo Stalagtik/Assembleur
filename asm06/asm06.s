@@ -2,6 +2,7 @@ global _start
 
 section .data
     message db 'Entrez un nombre: ', 0xA
+
 section .bss
     number resb 32
 
@@ -20,6 +21,7 @@ _start:
     mov rdx, 32
     syscall
 
+    ;--------Ajuste la taille de l'entrée pour exclure le caractère de nouvelle ligne---------
     sub rax, 1
     mov rcx, rax
     lea rsi, [number]
@@ -27,6 +29,7 @@ _start:
     xor rdi, rdi
 
 convert_decimal:
+    ;--------Convertit les caractères de l'entrée en un entier stocké dans rdi---------
     xor rax, rax
     movzx rax, byte [rsi]
     sub rax, '0'
@@ -38,6 +41,7 @@ convert_decimal:
     loop convert_decimal
 
 estPremier:
+    ;--------Détermine si le nombre est premier---------
     cmp rdi, 2
     jb pasPremier
     je premier
@@ -46,6 +50,7 @@ estPremier:
     mov rsi, 2
 
 test_prime:
+    ;--------Teste pour chaque nombre jusqu'à rdi/2---------
     mov rax, rdi
     xor rdx, rdx
     div rsi
