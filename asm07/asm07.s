@@ -1,89 +1,150 @@
+section .data
+    msg_error db "Erreur: veuillez entrer un nombre entier positif.", 0
+    buffer db "Veuillez entrer un nombre: ", 0
+    msg_zero db "0", 0
+
 section .bss
-    number resb 5   ; Buffer pour lire le nombre
-    buffer resb 12  ; Buffer pour stocker la sortie
+    num resb 5
+    output resb 20
 
 section .text
     global _start
 
 _start:
-    ; Lire le nombre de l'entrée standard
-    mov eax, 3      ; sys_read
-    mov ebx, 0      ; stdin
-    mov ecx, number ; adresse du buffer
-    mov edx, 5      ; taille du buffer
-    int 0x80
+    ;lire les paramètres de la ligne de commande
+    pop rax             ;nombre de paramètres (incluant le nom du programme)
+    pop rsi             ;sauter le nom du programme
 
-    ; Vérifier si aucune donnée n'a été lue
-    cmp eax, 0
-    je _exit_error  ; sortir avec code d'erreur 1 si aucune donnée n'est lue (eax = 0)
+    cmp rax, 2          ;vérifier si deux paramètres sont fournis
+    je _param_provided  ;aller à _param_provided si vrai
+    cmp rax, 1          ;vérifier si un seul paramètre est fourni
+    je _no_param_provided ; aller à _no_param_provided si vrai
 
-    ; S'il y a une erreur de lecture (eax < 0), gérer également ce cas
-    jl _exit_error  ; sortir avec code d'erreur 1 si erreur de lecture (eax < 0)
+    jmp _error          ;aller à _error si aucune des conditions n'est remplie
 
-    mov ecx, number
-    xor eax, eax    ; nettoyer eax pour commencer la conversion
+_param_provided:
+    pop rsi             ;obtenir le premier paramètre
+    jmp _convert_param  ;aller à _convert_param
 
-_conversion:
-    mov dl, byte [ecx]
-    sub dl, '0'
-    cmp dl, 9
-    ja _endconversion  ; finir la conversion si non numérique
-    imul eax, 10
-    add eax, edx
-    inc ecx
-    jmp _conversion
+_no_param_provided:
+    ;afficher le message pour entrer un nombre
+    mov rax, 1          ;sys_write
+    mov rdi, 1          ;file descriptor 1 (stdout)
+    mov rsi, buffer     ;message à afficher
+    mov rdx, 27         ;taille du message
+    syscall
 
-_endconversion:
-    cmp eax, 1       ; vérifier si le nombre lu est 1
-    je _display_zero ; afficher 0 directement si 1
-    test eax, eax    ; vérifier si le nombre lu est 0
-    jz _display_zero ; afficher 0 directement si 0
-    dec eax          ; décrémenter eax pour commencer la somme de n-1 à 1
-    mov ebx, eax     ; stocker la valeur de n-1 dans ebx
-    xor eax, eax     ; réinitialiser eax pour la somme
+    ;lire l'entrée de l'utilisateur
+    mov rax, 0          ;sys_read
+    mov rdi, 0          ;file descriptor 0 (stdin)
+    mov rsi, num        ;buffer pour lire l'entrée
+    mov rdx, 5          ;taille du buffer
+    syscall
 
-_somme:
-    add eax, ebx     ; ajouter ebx à eax
-    dec ebx          ; décrémenter ebx
-    jnz _somme       ; continuer tant que ebx n'est pas 0
+    ;vérifier si aucune entrée n'a été fournie
+    cmp rax, 0
+    je _error           ;aller à _error si aucune entrée
 
-    ; Conversion du résultat (eax) en chaîne de caractères pour l'affichage
-    mov ebx, 10
-    lea ecx, [buffer + 11]
-    mov byte [ecx], 0
+    ;supprimer le saut de ligne si présent
+    dec rax
+    cmp byte [rsi+rax], 10
+    jne _check_empty_input
+    mov byte [rsi+rax], 0
 
-_loop:
-    dec ecx
-    xor edx, edx
-    div ebx
+_check_empty_input:
+    cmp byte [rsi], 0
+    je _error           ;aller à _error si l'entrée est vide
+
+    mov rsi, num        ;déplacer le pointeur sur le buffer d'entrée
+
+_convert_param:
+    ;conversion de la chaîne en entier
+    xor rax, rax        ;initialiser rax à 0
+    xor rcx, rcx        ;initialiser rcx à 0
+    xor rdx, rdx        ;initialiser rdx à 0
+    mov r9, 10          ;base 10
+
+_AtoI:
+    movzx rbx, byte [rsi + rcx]
+    cmp rbx, 0          ;fin de chaîne
+    je _done_conversion ;aller à _done_conversion si fin de chaîne
+    sub rbx, '0'
+    cmp rbx, 0
+    jb _error           ;aller à _error si caractère non valide
+    cmp rbx, 9
+    ja _error           ;aller à _error si caractère non valide
+
+    imul rax, r9        ;multiplier rax par 10
+    add rax, rbx        ;ajouter la valeur numérique du caractère
+    inc rcx             ;avancer au caractère suivant
+    jmp _AtoI           ;boucle jusqu'à la fin de la chaîne
+
+_done_conversion:
+    ;si le nombre est zéro, afficher zéro et terminer avec succès
+    cmp rax, 0
+    je _print_zero      ;aller à _print_zero si le nombre est 0
+
+    ;calcul de la somme de 1 à N-1
+    mov r11, rax        ;sauvegarder le nombre initial
+    xor rax, rax        ;initialiser la somme à 0
+    xor rcx, rcx        ;initialiser le compteur à 0
+
+_calculate_sum:
+    inc rcx             ;incrémenter le compteur
+    cmp rcx, r11
+    jge _done_sum       ;aller à _done_sum si le compteur atteint le nombre
+    add rax, rcx        ;ajouter le compteur à la somme
+    jmp _calculate_sum  ;boucle jusqu'à atteindre le nombre
+
+_done_sum:
+    ;conversion du résultat en chaîne
+    lea rsi, [output + 20]
+    mov byte [rsi], 0
+    mov rbx, 10
+
+_convert_to_string:
+    dec rsi
+    xor rdx, rdx
+    div rbx
     add dl, '0'
-    mov [ecx], dl
-    test eax, eax
-    jnz _loop
+    mov [rsi], dl
+    test rax, rax
+    jnz _convert_to_string
 
-    ; Écrire le résultat sur la sortie standard
-    mov eax, 4
-    mov ebx, 1      ; stdout
-    lea edx, [buffer + 11]
-    sub edx, ecx
-    int 0x80
+_print_result:
+    ;afficher le résultat
+    mov rax, 1          ;sys_write
+    mov rdi, 1          ;file descriptor 1 (stdout)
+    lea rdx, [output + 20]
+    sub rdx, rsi
+    mov rsi, rsi
+    syscall
 
-_exit_success:
-    mov eax, 1
-    xor ebx, ebx
-    int 0x80
+    ;terminer le programme avec un code de sortie 0 (succès)
+    mov rax, 60         ;sys_exit
+    xor rdi, rdi
+    syscall
 
-_display_zero:
-    mov eax, 4
-    mov ebx, 1
-    mov ecx, buffer
-    mov byte [ecx], '0'
-    mov byte [ecx+1], 0
-    mov edx, 1
-    int 0x80
-    jmp _exit_success
+_print_zero:
+    ;afficher zéro
+    mov rax, 1          ;sys_write
+    mov rdi, 1          ;file descriptor 1 (stdout)
+    mov rsi, msg_zero
+    mov rdx, 1          ;taille du message
+    syscall
 
-_exit_error:
-    mov eax, 1
-    mov ebx, 1
-    int 0x80
+    mov rax, 60         ;sys_exit
+    syscall
+
+_error:
+    ;sorti 1 si erreur
+    mov rax, 1          ;sys_write
+    mov rdi, 1          ;file descriptor 1 (stdout)
+    mov rsi, msg_error
+    mov rdx, 48         ;taille du message d'erreur
+    syscall
+
+    ;terminer le programme avec un code de sortie 1 (échec)
+    mov rax, 60         ; sys_exit
+    mov rdi, 1
+    syscall
